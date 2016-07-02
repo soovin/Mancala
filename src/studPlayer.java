@@ -22,125 +22,193 @@
 // studPlayer class
 //################################################################
 
-    // http://stackoverflow.com/questions/27527090/finding-the-best-move-using-minmax-with-alpha-beta-pruning
-    // http://will.thimbleby.net/algorithms/doku.php?id=minimax_search_with_alpha-beta_pruning
-
 public class studPlayer extends Player {
 
 
-    /*Use IDS search to find the best move. The step starts from 1 and keeps incrementing by step 1 until
+	/*Use IDS search to find the best move. The step starts from 1 and keeps incrementing by step 1 until
 	 * interrupted by the time limit. The best move found in each step should be stored in the
 	 * protected variable move of class Player.
-     */
-    public void move(GameState state)
-    {
-        GameState stateCopy = new GameState(state);
+	 */
+	public void move(GameState state)
+	{
+		// select the initial legal move (to be safe!)
+		for (int i=0; i<6; i++)	{
+			if (!state.illegalMove(i)) {
+				move = i;
+				break;
+			}
+		}
 
-         for(int i = 0; i < 6; i++) {
-             if(!state.illegalMove(i)) {
-                 move = i;
-                 break;
-             }
-         }
+		// initialize maxDepth
+		int maxDepth = 1;
 
-        int maxDepth = 1;
-        while(maxDepth <= 1000) {
-            move = maxAction(stateCopy, maxDepth)[0];
-            maxDepth++;
-        }
+		// create copy state
+		GameState stateCopy = new GameState(state);
 
-    }
+		// keep updating move until timeout
+		while (maxDepth<100) {
 
-    // Return best move for max player. Note that this is a wrapper function created for ease to use.
+			// do minmax search(alpha-beta dfs) up to depth maxDepth
+			move = maxAction(stateCopy,maxDepth,move);
+			//System.out.println(move);
+
+			// increment maxDepth by 1
+			maxDepth++;
+			//System.out.println("maxDepth: "+maxDepth);
+		}
+
+
+	}
+
+	// Return best move for max player. Note that this is a wrapper function created for ease to use.
 	// In this function, you may do one step of search. Thus you can decide the best move by comparing the 
 	// sbe values returned by maxSBE. This function should call minAction with 5 parameters.
-    public int[] maxAction(GameState state, int maxDepth)
-    {
-        int alpha = Integer.MIN_VALUE;
-        int beta = Integer.MAX_VALUE;
+	public int maxAction(GameState state, int maxDepth, int moveOld){
 
-        int[] pair = maxAction(state, 0, maxDepth, alpha, beta);
-        return pair;
-    }
+		int alpha = Integer.MIN_VALUE;;
+		int beta = Integer.MAX_VALUE;;
+
+		int sbe = Integer.MIN_VALUE;
+		int temp;
+
+		// TODO: here lies the problem!
+		// we have to initialize this variable to some value, which may be an illegal move. 
+		// If this function is terminated before going to the loop below(which has a illegalMove() check due to time constraint,
+		// we return this initialized value of move, which is illegal......
+		// we have to find a way to (1) either initialize the value with illegal bin
+		// (2) or figure out when is the moment of timeout and adjust our function to stop iterating before that
+		// Problem solved by bringing the old action
+		int move = moveOld;
+
+		for (int i=0;i<6;i++) {
+			if (!state.illegalMove(i)) {
+
+				// save current state array 
+				int[] stateArray = state.toArray();
+
+				// suppose we apply move at bin i
+				state.applyMove(i);
+
+				// rotate the context
+				state.rotate();
+
+				// call minAction
+				temp = minAction(state,1,maxDepth,alpha,beta);
+
+				// update best move if sbe is larger
+				if (temp>=sbe) {
+					move = i;
+					sbe = temp;
+					//System.out.println("move:"+move+ "  sbe:"+sbe);
+				}
+
+				// restore
+				state.state = stateArray;
+
+			}
+		}
+
+		return move;
+	}
 
 	//return sbe value related to the best move for max player
-    public int[] maxAction(GameState state, int currentDepth, int maxDepth, int alpha, int beta)
-    {
-        int[] pair = new int[2];
+	public int maxAction(GameState state, int currentDepth, int maxDepth, int alpha, int beta){
 
-        if (currentDepth == maxDepth) {
-            pair[1] = sbe(state);
-            return pair;
-        }
+		// check if at maxDepth
+		if (currentDepth == maxDepth) {
+			return sbe(state);
+		}
 
-        int[] stateArray = state.toArray();
+		// save current state array 
+		int[] stateArray = state.toArray();
 
-        int v = Integer.MIN_VALUE;
-        for(int i = 0; i < 6; i++) {
-            if(!state.illegalMove(i)) {
-                state.applyMove(i);
-                state.rotate();
-                int[] vpArray = minAction(state, currentDepth + 1, maxDepth, alpha, beta);
-                int vp = vpArray[1];
-                if (vp > alpha) {
-                    alpha = vp;
-                }
-                if (vp > v) {
-                    pair[0] = i;
-                    v = vp;
-                }
-                if (vp >= beta) {
-                    break;
-                }
-            }
-            state.state = stateArray;
-        }
+		// initialize v
+		int v = Integer.MIN_VALUE;
+		boolean playAgain;
 
-        pair[1] = v;
-        return pair;
-    }
+		for (int i=0;i<6;i++) {
+			if (!state.illegalMove(i)) {
+				// suppose we apply move at bin i
+				playAgain = state.applyMove(i);
+				if (playAgain) {
+					// max player continues to play again.
+					v = Math.max(v,maxAction(state,currentDepth+1,maxDepth,alpha,beta));
+				} else {
+					// min player takes the turn.
 
-    //return sbe value related to the bset move for min player
-    public int[] minAction(GameState state, int currentDepth, int maxDepth, int alpha, int beta)
-    {
-        int[] pair = new int[2];
+					// rotate the context
+					state.rotate();
 
-        if (currentDepth == maxDepth) {
-            pair[1] = -sbe(state);
-            return pair;
-        }
+					// call minAction
+					v = Math.max(v, minAction(state,currentDepth+1,maxDepth,alpha,beta));
+				}
 
-        int[] stateArray = state.toArray();
+				// restore the state (undo applyMove(i))
+				//state.rotate();
+				state.state = stateArray;
 
-        int v = Integer.MAX_VALUE;
-        for(int i = 0; i < 6; i++) {
-            if(!state.illegalMove(i)) {
-                state.applyMove(i);
-                state.rotate();
-                int[] vpArray = maxAction(state, currentDepth + 1, maxDepth, alpha, beta);
-                int vp = vpArray[1];
-                if (vp < beta) {
-                    beta = vp;
-                }
-                if (vp < v) {
-                    pair[0] = i;
-                    v = vp;
-                }
-                if (vp <= alpha) {
-                    break;
-                }
-            }
-            state.state = stateArray;
-        }
+				// check for pruning
+				if (v>=beta) {
+					return v;
+				}
+				alpha = Math.max(alpha,v);
+			}
 
-        pair[1] = v;
-        return pair;
-    }
+		}
+		return v;
+	}
+	//return sbe value related to the bset move for min player
+	public int minAction(GameState state, int currentDepth, int maxDepth, int alpha, int beta){
 
-    //the sbe function for game state. Note that in the game state, the bins for current player are always in the bottom row.
-    private int sbe(GameState state)
-    {
-        return state.stoneCount(6) - state.stoneCount(13);
-    }
+		// check if at maxDepth
+		if (currentDepth == maxDepth) {
+			return -sbe(state);
+		}
+
+		// save current state array 
+		int[] stateArray = state.toArray();
+
+		// initialize v
+		int v = Integer.MIN_VALUE;
+		boolean playAgain;
+
+		for (int i=0;i<6;i++) {
+			if (!state.illegalMove(i)) {
+				// suppose we apply move at bin i
+				playAgain = state.applyMove(i);
+
+				if (playAgain) {
+					// min player continues to play again.
+					v = Math.min(v, minAction(state,currentDepth+1,maxDepth,alpha,beta));
+				} else {
+					// max player takes the turn.
+
+					// rotate the context
+					state.rotate();
+
+					// call maxAction
+					v = Math.min(v, maxAction(state,currentDepth+1,maxDepth,alpha,beta));
+				}
+
+				// restore the state (undo applyMove(i))
+				state.state = stateArray;
+				//state.rotate();
+
+				// check for pruning
+				if (v<=alpha) {
+					return v;
+				}  
+				beta = Math.min(beta, v);
+			}
+		}
+		return v;
+	}
+
+	//the sbe function for game state. Note that in the game state, the bins for current player are always in the bottom row.
+	private int sbe(GameState state){
+
+		// simplest SBE
+		return state.stoneCount(6) - state.stoneCount(13);
+	}
 }
 
